@@ -374,7 +374,7 @@ public class CombatPlugin implements EveryFrameCombatPlugin {
                 back.renderAtCenter(normal.x + mouse.x, normal.y + mouse.y);
 
                 clr = new Color(barColor.getRed(), barColor.getGreen(), barColor.getBlue(),
-                        (int)Math.min(255, barColor.getAlpha() * opacity * Math.min(1f, hard * 10f)));
+                        (int)Math.max(0, Math.min(255, barColor.getAlpha() * opacity * Math.min(1f, hard * 10f))));
                 clr = Misc.interpolateColor(clr, warnColor, warnness);
 
                 normal.normalise().scale(length * (1f - hard));
