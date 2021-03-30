@@ -11,8 +11,8 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.lwjgl.BufferUtils;
-import org.lwjgl.LWJGLException;
 import org.lwjgl.input.Cursor;
+import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 import org.lwjgl.util.vector.Vector2f;
 
@@ -40,7 +40,8 @@ public class CombatPlugin implements EveryFrameCombatPlugin {
     static boolean cursorNeedsReset = true;
 
     float scale = 1f, damageFlash = 0, fluxLastFrame = 0;
-    SpriteAPI front, back, half, quarter, hardBar;
+    int toggleStrafeAndTurnToCursorKey = 37;
+    SpriteAPI frontKeyTurn, frontMouseTurn, back, half, quarter, hardBar;
     CombatEngineAPI engine;
     boolean escapeMenuIsOpen = false, needToLoadSettings = true;
     Vector2f mouse = new Vector2f(), at = new Vector2f(), normal = new Vector2f();
@@ -58,7 +59,8 @@ public class CombatPlugin implements EveryFrameCombatPlugin {
 
             resetCursor();
 
-            front = Global.getSettings().getSprite("sun_fr", "front");
+            frontKeyTurn = Global.getSettings().getSprite("sun_fr", "frontKeyTurn");
+            frontMouseTurn = Global.getSettings().getSprite("sun_fr", "frontMouseTurn");
             back = Global.getSettings().getSprite("sun_fr", "back");
             half = Global.getSettings().getSprite("sun_fr", "half");
             quarter = Global.getSettings().getSprite("sun_fr", "quarter");
@@ -74,10 +76,15 @@ public class CombatPlugin implements EveryFrameCombatPlugin {
             if (!engine.isUIShowingDialog()) escapeMenuIsOpen = false;
 
             for (InputEventAPI e : events) {
-                if (e.isConsumed()) continue;
+                if (e.isConsumed() || !e.isKeyDownEvent()) continue;
 
-                if (e.isKeyDownEvent() && e.getEventValue() == ESCAPE_KEY_VALUE) {
+                if (e.getEventValue() == ESCAPE_KEY_VALUE) {
                     escapeMenuIsOpen = true;
+                } else if (e.getEventValue() == toggleStrafeAndTurnToCursorKey && !engine.isUIShowingDialog()) {
+                    Global.getSettings().setAutoTurnMode(!Global.getSettings().isAutoTurnMode());
+                    Global.getSoundPlayer().playUISound(Global.getSettings().isAutoTurnMode()
+                            ? "sun_fr_turn_to_cursor_on"
+                            : "sun_fr_turn_to_cursor_off", 1, 1);
                 }
             }
         } catch (Exception e) { reportCrash(e); }
@@ -120,9 +127,9 @@ public class CombatPlugin implements EveryFrameCombatPlugin {
 //
 //                if(opacity > 0) drawGauge(length, 1, gaugeBackgroundColor, opacity);
 //
-//                front.setColor(clr);
-//                front.setAngle(aimAngle);
-//                front.renderAtCenter(mouse.x, mouse.y);
+//                frontKeyTurn.setColor(clr);
+//                frontKeyTurn.setAngle(aimAngle);
+//                frontKeyTurn.renderAtCenter(mouse.x, mouse.y);
 //
 //                Mouse.setNativeCursor(hiddenCursor);
 //
@@ -279,6 +286,7 @@ public class CombatPlugin implements EveryFrameCombatPlugin {
                 boolean overrideColors = cfg.getBoolean("overrideDefaultUiColors");
 
                 scale = (float) cfg.getDouble("sizeMult");
+                toggleStrafeAndTurnToCursorKey = cfg.getInt("toggleStrafeAndTurnToCursorKey");
                 warnColor = getColor(cfg.getJSONArray("warningColor"));
                 gaugeBackgroundColor = getColor(cfg.getJSONArray("gaugeBackgroundColor"));
 
@@ -292,7 +300,8 @@ public class CombatPlugin implements EveryFrameCombatPlugin {
                     barColor = Misc.interpolateColor(reticleColor, Color.WHITE, 0.5f);
                 }
 
-                front.setSize(front.getWidth() * scale, front.getHeight() * scale);
+                frontKeyTurn.setSize(frontKeyTurn.getWidth() * scale, frontKeyTurn.getHeight() * scale);
+                frontMouseTurn.setSize(frontMouseTurn.getWidth() * scale, frontMouseTurn.getHeight() * scale);
                 back.setSize(back.getWidth() * scale, back.getHeight() * scale);
                 half.setSize(half.getWidth() * scale, half.getHeight() * scale);
                 quarter.setSize(quarter.getWidth() * scale, quarter.getHeight() * scale);
@@ -312,7 +321,7 @@ public class CombatPlugin implements EveryFrameCombatPlugin {
 
                 if(hiddenCursor == null) hiddenCursor = new Cursor(1, 1, 0, 0, 1, BufferUtils.createIntBuffer(1), null);
 
-                mouse.set(Mouse.getX(), Mouse.getY());
+                mouse.set(Global.getSettings().getMouseX(), Global.getSettings().getMouseY());
                 at.set(engine.getPlayerShip().getLocation());
                 at.x = vp.convertWorldXtoScreenX(at.x);
                 at.y = vp.convertWorldYtoScreenY(at.y);
@@ -343,46 +352,52 @@ public class CombatPlugin implements EveryFrameCombatPlugin {
 
                 if(opacity > 0) drawGauge(length, 1, gaugeBackgroundColor, opacity, 0);
 
-                front.setColor(clr);
-                front.setAngle(aimAngle);
-                front.renderAtCenter(mouse.x, mouse.y);
+                if(Global.getSettings().isAutoTurnMode() ^ org.lwjgl.input.Keyboard.isKeyDown(Keyboard.KEY_LSHIFT)) {
+                    frontMouseTurn.setColor(clr);
+                    frontMouseTurn.setAngle(aimAngle);
+                    frontMouseTurn.renderAtCenter(mouse.x, mouse.y);
+                } else {
+                    frontKeyTurn.setColor(clr);
+                    frontKeyTurn.setAngle(aimAngle);
+                    frontKeyTurn.renderAtCenter(mouse.x, mouse.y);
+                }
 
                 Mouse.setNativeCursor(hiddenCursor);
 
-                if(opacity <= 0) return;
+                if(opacity > 0) {
+                    clr = new Color(clr.getRed(), clr.getGreen(), clr.getBlue(), (int) Math.min(255, clr.getAlpha() * opacity));
 
-                clr = new Color(clr.getRed(), clr.getGreen(), clr.getBlue(), (int)Math.min(255, clr.getAlpha() * opacity));
+                    normal.normalise().scale(length * 0.25f);
+                    quarter.setColor(clr);
+                    quarter.setAngle(aimAngle);
+                    quarter.renderAtCenter(normal.x + mouse.x, normal.y + mouse.y);
 
-                normal.normalise().scale(length * 0.25f);
-                quarter.setColor(clr);
-                quarter.setAngle(aimAngle);
-                quarter.renderAtCenter(normal.x + mouse.x, normal.y + mouse.y);
+                    normal.normalise().scale(length * 0.5f);
+                    half.setColor(clr);
+                    half.setAngle(aimAngle);
+                    half.renderAtCenter(normal.x + mouse.x, normal.y + mouse.y);
 
-                normal.normalise().scale(length * 0.5f);
-                half.setColor(clr);
-                half.setAngle(aimAngle);
-                half.renderAtCenter(normal.x + mouse.x, normal.y + mouse.y);
+                    normal.normalise().scale(length * 0.75f);
+                    quarter.setColor(clr);
+                    quarter.setAngle(aimAngle);
+                    quarter.renderAtCenter(normal.x + mouse.x, normal.y + mouse.y);
 
-                normal.normalise().scale(length * 0.75f);
-                quarter.setColor(clr);
-                quarter.setAngle(aimAngle);
-                quarter.renderAtCenter(normal.x + mouse.x, normal.y + mouse.y);
+                    normal.normalise().scale(length);
+                    back.setColor(clr);
+                    back.setAngle(aimAngle);
+                    back.renderAtCenter(normal.x + mouse.x, normal.y + mouse.y);
 
-                normal.normalise().scale(length);
-                back.setColor(clr);
-                back.setAngle(aimAngle);
-                back.renderAtCenter(normal.x + mouse.x, normal.y + mouse.y);
+                    clr = new Color(barColor.getRed(), barColor.getGreen(), barColor.getBlue(),
+                            (int) Math.max(0, Math.min(255, barColor.getAlpha() * opacity * Math.min(1f, hard * 10f))));
+                    clr = Misc.interpolateColor(clr, warnColor, warnness);
 
-                clr = new Color(barColor.getRed(), barColor.getGreen(), barColor.getBlue(),
-                        (int)Math.max(0, Math.min(255, barColor.getAlpha() * opacity * Math.min(1f, hard * 10f))));
-                clr = Misc.interpolateColor(clr, warnColor, warnness);
+                    normal.normalise().scale(length * (1f - hard));
+                    hardBar.setColor(clr);
+                    hardBar.setAngle(aimAngle);
+                    hardBar.renderAtCenter(normal.x + mouse.x, normal.y + mouse.y);
 
-                normal.normalise().scale(length * (1f - hard));
-                hardBar.setColor(clr);
-                hardBar.setAngle(aimAngle);
-                hardBar.renderAtCenter(normal.x + mouse.x, normal.y + mouse.y);
-
-                drawGauge(length, soft, gaugeColor, opacity, warnness);
+                    drawGauge(length, soft, gaugeColor, opacity, warnness);
+                }
 
                 glPopMatrix();
             }

@@ -2,7 +2,6 @@ package flux_reticle;
 
 import com.fs.starfarer.api.BaseModPlugin;
 import com.fs.starfarer.api.Global;
-import com.fs.starfarer.api.ModSpecAPI;
 
 public class ModPlugin extends BaseModPlugin {
     static CampaignPlugin script;
