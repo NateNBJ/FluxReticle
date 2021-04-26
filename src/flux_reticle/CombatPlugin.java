@@ -313,7 +313,7 @@ public class CombatPlugin implements EveryFrameCombatPlugin {
             if(vp == null || engine == null || engine.isUIShowingDialog() || engine.getCombatUI().isShowingCommandUI()
                     || escapeMenuIsOpen || needToLoadSettings || engine.getPlayerShip() == null
                     || engine.getPlayerShip().getLocation() == null || Global.getCurrentState() != GameState.COMBAT
-                    || engine.isCombatOver()) {
+                    || engine.isCombatOver() || !engine.isUIShowingHUD()) {
 
                 resetCursor();
             } else {
