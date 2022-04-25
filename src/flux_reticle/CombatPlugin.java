@@ -39,7 +39,7 @@ public class CombatPlugin implements EveryFrameCombatPlugin {
     static final int
             ESCAPE_KEY_VALUE = 1;
     static org.lwjgl.input.Cursor hiddenCursor, originalCursor;
-    static boolean cursorNeedsReset = true, wasAutoTurnModePriorToActivation = false;
+    static boolean cursorNeedsReset = false, wasAutoTurnModePriorToActivation = false;
 
     float scale = 1f, damageFlash = 0, fluxLastFrame = 0;
     int toggleStrafeAndTurnToCursorKey = 37, glowOpacity = 64;
@@ -285,13 +285,14 @@ public class CombatPlugin implements EveryFrameCombatPlugin {
             } else {
                 if(!cursorNeedsReset) {
                     wasAutoTurnModePriorToActivation = Global.getSettings().isAutoTurnMode();
-                    cursorNeedsReset = true;
                 }
 
                 if(!cursorNeedsReset || !prevHullId.equals(getFlagshipHullId())) {
                     Global.getSettings().setAutoTurnMode(isAutoTurnModeForCurrentFlagshipClass());
                     prevHullId = getFlagshipHullId();
                 }
+
+                if(!cursorNeedsReset) cursorNeedsReset = true;
 
                 if(!showReticle) {
                     return;
