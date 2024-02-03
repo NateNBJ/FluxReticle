@@ -7,6 +7,7 @@ import com.fs.starfarer.api.combat.*;
 import com.fs.starfarer.api.graphics.SpriteAPI;
 import com.fs.starfarer.api.input.InputEventAPI;
 import com.fs.starfarer.api.util.Misc;
+import lunalib.lunaSettings.LunaSettings;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -19,14 +20,72 @@ import org.lwjgl.util.vector.Vector2f;
 import java.awt.*;
 import java.io.IOException;
 import java.util.List;
+import java.util.MissingResourceException;
 
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL11.glPopAttrib;
 
 public class CombatPlugin implements EveryFrameCombatPlugin {
+    public final static String PREFIX = "sun_fr_";
     public static final String ID = "sun_flux_reticle",
             SETTINGS_PATH = "FLUX_RETICLE_OPTIONS.ini",
             COMMON_DATA_PATH = "sun_fr/auto_turn_choices.json";
+
+    static final String LUNALIB_ID = "lunalib";
+    static JSONObject settingsCfg = null;
+    static <T> T get(String id, Class<T> type) throws Exception {
+        if(false && /* TODO */ Global.getSettings().getModManager().isModEnabled(LUNALIB_ID)) {
+            id = PREFIX + id;
+
+            if(type == Integer.class) return type.cast(LunaSettings.getInt(ID, id));
+            if(type == Float.class) return type.cast(LunaSettings.getFloat(ID, id));
+            if(type == Boolean.class) return type.cast(LunaSettings.getBoolean(ID, id));
+            if(type == Double.class) return type.cast(LunaSettings.getDouble(ID, id));
+            if(type == String.class) return type.cast(LunaSettings.getString(ID, id));
+            if(type == Color.class) return type.cast(LunaSettings.getColor(ID, id));
+        } else {
+            if(settingsCfg == null) settingsCfg = Global.getSettings().getMergedJSONForMod(SETTINGS_PATH, ID);
+
+            if(type == Integer.class) return type.cast(settingsCfg.getInt(id));
+            if(type == Float.class) return type.cast((float) settingsCfg.getDouble(id));
+            if(type == Boolean.class) return type.cast(settingsCfg.getBoolean(id));
+            if(type == Double.class) return type.cast(settingsCfg.getDouble(id));
+            if(type == String.class) return type.cast(settingsCfg.getString(id));
+            if(type == Color.class) return type.cast(getColor(settingsCfg.getJSONArray(id)));
+        }
+
+        throw new MissingResourceException("No setting found with id: " + id, type.getName(), id);
+    }
+    static int getInt(String id) throws Exception { return get(id, Integer.class); }
+    static double getDouble(String id) throws Exception { return get(id, Double.class); }
+    static float getFloat(String id) throws Exception { return get(id, Float.class); }
+    static boolean getBoolean(String id) throws Exception { return get(id, Boolean.class); }
+    static String getString(String id) throws Exception { return get(id, String.class); }
+    static Color getColor(String id) throws Exception { return get(id, Color.class); }
+    boolean readSettings() throws Exception {
+        boolean overrideColors = getBoolean("overrideDefaultUiColors");
+
+        showReticle = getBoolean("showReticle");
+        showReticleWhenInterfaceIsHidden = getBoolean("showReticleWhenInterfaceIsHidden");
+        glowOpacity = getInt("glowOpacity");
+
+        scale = (float) getDouble("sizeMult");
+        toggleStrafeAndTurnToCursorKey = getInt("toggleStrafeAndTurnToCursorKey");
+        warnColor = getColor("warningColor");
+        gaugeBackgroundColor = getColor("gaugeBackgroundColor");
+
+        if(overrideColors) {
+            reticleColor = getColor("reticleColor");
+            gaugeColor = getColor("softFluxGaugeColor");
+            barColor = getColor("hardFluxBarColor");
+        } else {
+            reticleColor = getColor(Global.getSettings().getColor("textFriendColor"), 1);
+            gaugeColor = getColor(reticleColor, 0.5f);
+            barColor = Misc.interpolateColor(reticleColor, Color.WHITE, 0.5f);
+        }
+
+        return true;
+    }
 
     static final float
             MAX_LENGTH = 80,
@@ -39,7 +98,7 @@ public class CombatPlugin implements EveryFrameCombatPlugin {
     static final int
             ESCAPE_KEY_VALUE = 1;
     static org.lwjgl.input.Cursor hiddenCursor, originalCursor;
-    static boolean cursorNeedsReset = false, wasAutoTurnModePriorToActivation = false;
+    static boolean cursorNeedsReset = false, wasAutoTurnModePriorToActivation = false, errorDisplayed = false;
 
     float scale = 1f, damageFlash = 0, fluxLastFrame = 0;
     int toggleStrafeAndTurnToCursorKey = 37, glowOpacity = 64;
@@ -83,7 +142,10 @@ public class CombatPlugin implements EveryFrameCombatPlugin {
 
             if (Global.getCombatEngine() != null && Global.getCurrentState() == GameState.COMBAT) {
                 Global.getCombatEngine().getCombatUI().addMessage(2, Color.RED, message);
-                Global.getCombatEngine().getCombatUI().addMessage(1, Color.ORANGE, exception.getMessage());
+
+                if(exception.getMessage() != null) {
+                    Global.getCombatEngine().getCombatUI().addMessage(1, Color.ORANGE, exception.getMessage());
+                }
             } else if (Global.getSector() != null) {
                 CampaignUIAPI ui = Global.getSector().getCampaignUI();
 
@@ -92,12 +154,28 @@ public class CombatPlugin implements EveryFrameCombatPlugin {
                 ui.showConfirmDialog(message + "\n\n" + exception.getMessage(), "Ok", null, null, null);
 
                 if(ui.getCurrentInteractionDialog() != null) ui.getCurrentInteractionDialog().dismiss();
-            } else return false;
+            } else return errorDisplayed = false;
 
-            return true;
+            return errorDisplayed = true;
         } catch (Exception e) {
-            return false;
+            return errorDisplayed = false;
         }
+    }
+    static Color getColor(JSONArray c) throws JSONException {
+        return new Color(
+                Math.min(255, Math.max(0, c.getInt(0))),
+                Math.min(255, Math.max(0, c.getInt(1))),
+                Math.min(255, Math.max(0, c.getInt(2))),
+                Math.min(255, Math.max(0, c.getInt(3)))
+        );
+    }
+    static Color getColor(Color c, float alphaMult) {
+        return new Color(
+                Math.min(1, Math.max(0, c.getRed() / 255f)),
+                Math.min(1, Math.max(0, c.getGreen() / 255f)),
+                Math.min(1, Math.max(0, c.getBlue() / 255f)),
+                Math.min(1, Math.max(0, (c.getAlpha() / 255f) * alphaMult))
+        );
     }
 
     public String getFlagshipHullId() {
@@ -144,7 +222,7 @@ public class CombatPlugin implements EveryFrameCombatPlugin {
         glColor4f(1, 1, 1, 1);
     }
     boolean isAutoTurnModeForCurrentFlagshipClass()  throws IOException, JSONException{
-        if(engine != null && engine.getPlayerShip() != null) {
+        if(engine != null && engine.getPlayerShip() != null && !engine.getCombatUI().isStrafeToggledOn()) {
             return commonData.has(getFlagshipHullId())
                     ? commonData.getBoolean(getFlagshipHullId())
                     : wasAutoTurnModePriorToActivation;
@@ -164,22 +242,6 @@ public class CombatPlugin implements EveryFrameCombatPlugin {
             commonData.put(getFlagshipHullId(), useStrafeMode);
             Global.getSettings().writeTextFileToCommon(COMMON_DATA_PATH, commonData.toString());
         }
-    }
-    Color getColor(JSONArray c) throws JSONException {
-        return new Color(
-                Math.min(255, Math.max(0, c.getInt(0))),
-                Math.min(255, Math.max(0, c.getInt(1))),
-                Math.min(255, Math.max(0, c.getInt(2))),
-                Math.min(255, Math.max(0, c.getInt(3)))
-        );
-    }
-    Color getColor(Color c, float alphaMult) {
-        return new Color(
-                Math.min(1, Math.max(0, c.getRed() / 255f)),
-                Math.min(1, Math.max(0, c.getGreen() / 255f)),
-                Math.min(1, Math.max(0, c.getBlue() / 255f)),
-                Math.min(1, Math.max(0, (c.getAlpha() / 255f) * alphaMult))
-        );
     }
 
     @Override
@@ -220,7 +282,10 @@ public class CombatPlugin implements EveryFrameCombatPlugin {
 
                 if (e.getEventValue() == ESCAPE_KEY_VALUE) {
                     escapeMenuIsOpen = true;
-                } else if (e.getEventValue() == toggleStrafeAndTurnToCursorKey && !engine.isUIShowingDialog()) {
+                } else if (e.getEventValue() == toggleStrafeAndTurnToCursorKey
+                        && !engine.isUIShowingDialog()
+                        && !Global.getSettings().isStrafeKeyAToggle()) {
+
                     boolean isAutoTurnMode = !Global.getSettings().isAutoTurnMode();
                     Global.getSettings().setAutoTurnMode(isAutoTurnMode);
                     setAutoTurnModeForCurrentFlagshipClass(isAutoTurnMode);
@@ -245,30 +310,10 @@ public class CombatPlugin implements EveryFrameCombatPlugin {
     @Override
     public void advance(float amount, java.util.List<InputEventAPI> events) {
         try {
-            if(engine == null) return;
+            if(engine == null || errorDisplayed) return;
 
             if(needToLoadSettings) {
-                JSONObject cfg = Global.getSettings().getMergedJSONForMod(SETTINGS_PATH, ID);
-                boolean overrideColors = cfg.getBoolean("overrideDefaultUiColors");
-
-                showReticle = cfg.getBoolean("showReticle");
-                showReticleWhenInterfaceIsHidden = cfg.getBoolean("showReticleWhenInterfaceIsHidden");
-                glowOpacity = cfg.getInt("glowOpacity");
-
-                scale = (float) cfg.getDouble("sizeMult");
-                toggleStrafeAndTurnToCursorKey = cfg.getInt("toggleStrafeAndTurnToCursorKey");
-                warnColor = getColor(cfg.getJSONArray("warningColor"));
-                gaugeBackgroundColor = getColor(cfg.getJSONArray("gaugeBackgroundColor"));
-
-                if(overrideColors) {
-                    reticleColor = getColor(cfg.getJSONArray("reticleColor"));
-                    gaugeColor = getColor(cfg.getJSONArray("softFluxGaugeColor"));
-                    barColor = getColor(cfg.getJSONArray("hardFluxBarColor"));
-                } else {
-                    reticleColor = getColor(Global.getSettings().getColor("textFriendColor"), 1);
-                    gaugeColor = getColor(reticleColor, 0.5f);
-                    barColor = Misc.interpolateColor(reticleColor, Color.WHITE, 0.5f);
-                }
+                readSettings();
 
                 frontKeyTurn.setSize(frontKeyTurn.getWidth() * scale, frontKeyTurn.getHeight() * scale);
                 frontMouseTurn.setSize(frontMouseTurn.getWidth() * scale, frontMouseTurn.getHeight() * scale);
@@ -287,12 +332,14 @@ public class CombatPlugin implements EveryFrameCombatPlugin {
                     wasAutoTurnModePriorToActivation = Global.getSettings().isAutoTurnMode();
                 }
 
-                if(!cursorNeedsReset || !prevHullId.equals(getFlagshipHullId())) {
+                if(Global.getSettings().isStrafeKeyAToggle()) {
+                    prevHullId = "";
+                } else if(!cursorNeedsReset || !prevHullId.equals(getFlagshipHullId())) {
                     Global.getSettings().setAutoTurnMode(isAutoTurnModeForCurrentFlagshipClass());
                     prevHullId = getFlagshipHullId();
                 }
 
-                if(!cursorNeedsReset) cursorNeedsReset = true;
+                cursorNeedsReset = true;
 
                 if(!showReticle) {
                     return;
@@ -331,7 +378,15 @@ public class CombatPlugin implements EveryFrameCombatPlugin {
 
                 clr = Misc.interpolateColor(clr, warnColor, warnness);
 
-                if(Global.getSettings().isAutoTurnMode() ^ org.lwjgl.input.Keyboard.isKeyDown(Keyboard.KEY_LSHIFT)) {
+                if(Global.getSettings().isStrafeKeyAToggle()) {
+                    if(engine.getCombatUI().isStrafeToggledOn()) {
+                        front = frontMouseTurn;
+                        glow = glowMouseTurn;
+                    } else {
+                        front = frontKeyTurn;
+                        glow = glowKeyTurn;
+                    }
+                } else if(Global.getSettings().isAutoTurnMode() ^ org.lwjgl.input.Keyboard.isKeyDown(Keyboard.KEY_LSHIFT)) {
                     front = frontMouseTurn;
                     glow = glowMouseTurn;
                 } else {
