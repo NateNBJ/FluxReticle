@@ -34,7 +34,7 @@ public class CombatPlugin implements EveryFrameCombatPlugin {
     static final String LUNALIB_ID = "lunalib";
     static JSONObject settingsCfg = null;
     static <T> T get(String id, Class<T> type) throws Exception {
-        if(false && /* TODO */ Global.getSettings().getModManager().isModEnabled(LUNALIB_ID)) {
+        if(Global.getSettings().getModManager().isModEnabled(LUNALIB_ID)) {
             id = PREFIX + id;
 
             if(type == Integer.class) return type.cast(LunaSettings.getInt(ID, id));
@@ -42,7 +42,12 @@ public class CombatPlugin implements EveryFrameCombatPlugin {
             if(type == Boolean.class) return type.cast(LunaSettings.getBoolean(ID, id));
             if(type == Double.class) return type.cast(LunaSettings.getDouble(ID, id));
             if(type == String.class) return type.cast(LunaSettings.getString(ID, id));
-            if(type == Color.class) return type.cast(LunaSettings.getColor(ID, id));
+            if(type == Color.class) {
+                Color clr = (Color)type.cast(LunaSettings.getColor(ID, id));
+                int opacity = (int)LunaSettings.getInt(ID, id + "Opacity");
+
+                return (T)new Color(clr.getRed(), clr.getGreen(), clr.getBlue(), Math.max(0, Math.min(255, opacity)));
+            }
         } else {
             if(settingsCfg == null) settingsCfg = Global.getSettings().getMergedJSONForMod(SETTINGS_PATH, ID);
 
