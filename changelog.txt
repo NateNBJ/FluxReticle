@@ -3,5 +3,4 @@ Version 1.5.0
 - Updated for Starsector 0.98.5a
 
 
-
 Version changes for older updates can be found at https://github.com/NateNBJ/FluxReticle/releases
